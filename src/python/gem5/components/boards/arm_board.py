@@ -43,12 +43,14 @@ from m5.objects import (
     Bridge,
     CowDiskImage,
     IOXBar,
+    GenericTimer,
     PciVirtIO,
     Port,
     RawDiskImage,
     SimObject,
     SrcClockDomain,
     Terminal,
+    VExpress_GEM5_V1,
     VExpress_GEM5_Base,
     VExpress_GEM5_Foundation,
     VirtIOBlock,
@@ -80,6 +82,7 @@ class ArmBoard(ArmSystem, AbstractBoard, KernelDiskWorkload):
 
     **Limitations**
     * stage2 walker ports are ignored.
+    * KVM cores only work with VExpress_GEM5_V1
     """
 
     __metaclass__ = ABCMeta
@@ -110,8 +113,13 @@ class ArmBoard(ArmSystem, AbstractBoard, KernelDiskWorkload):
         requires(isa_required=ISA.ARM)
 
         # Setting up ARM release here. We use the ARM default release, which
-        # corresponds to an ARMv8 system.
+        # corresponds to an ARMv8 system. The default release is updated if
+        # the user is using any KVM cores.
         self.release = release
+        if any(core.is_kvm_core() for core in processor.get_cores()):
+            # KVM cores only work with VExpress_GEM5_V1()
+            if isinstance(platform, VExpress_GEM5_V1):
+                self.release = ArmDefaultRelease.for_kvm()
 
         # Setting multi_proc of ArmSystem by counting the number of processors.
         if processor.get_num_cores() == 1:
@@ -210,6 +218,17 @@ class ArmBoard(ArmSystem, AbstractBoard, KernelDiskWorkload):
         # realview system.
         if hasattr(self.realview.gic, "cpu_addr"):
             self.gic_cpu_addr = self.realview.gic.cpu_addr
+
+        # For KVM cpus, we need to simulate the GIC.
+        if any(core.is_kvm_core() for core in self.processor.get_cores()):
+            # The following is taken from
+            # `tests/fs/linux/arm/configs/arm_generic.py`:
+            # Arm KVM regressions will use a simulated GIC. This means that in
+            # order to work we need to remove the system interface of the
+            # generic timer from the DTB and we need to inform the MuxingKvmGic
+            # class to use the gem5 GIC instead of relying on the host one
+            GenericTimer.generateDeviceTree = SimObject.generateDeviceTree
+            self.realview.gic.simulate_gic = True
 
         # IO devices has to setup before incorporating the caches in the case
         # of ruby caches. Otherwise the DMA controllers are incorrectly
