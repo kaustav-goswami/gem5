@@ -25,6 +25,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 from m5.params import *
+from m5.objects.AbstractMemory import AbstractMemory
 from m5.SimObject import SimObject
 
 
@@ -33,6 +34,7 @@ class OutgoingRequestBridge(SimObject):
     cxx_header = "sst/outgoing_request_bridge.hh"
     cxx_class = "gem5::OutgoingRequestBridge"
 
+    # abs_mem = AbstractMemory()
     port = ResponsePort("Response Port")
     physical_address_ranges = VectorParam.AddrRange(
         [AddrRange(0x80000000, MaxAddr)], "Physical address ranges."

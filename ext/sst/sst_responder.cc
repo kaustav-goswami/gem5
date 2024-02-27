@@ -49,6 +49,7 @@ SSTResponder::setOutputStream(SST::Output* output_)
 bool
 SSTResponder::handleRecvTimingReq(gem5::PacketPtr pkt)
 {
+    // test timing here
     auto request = Translator::gem5RequestToSSTRequest(
         pkt, owner->sstRequestIdToPacketMap
     );

@@ -30,10 +30,16 @@
 #include <utility>
 #include <vector>
 
+#include "base/statistics.hh"
 #include "mem/port.hh"
 #include "params/OutgoingRequestBridge.hh"
 #include "sim/sim_object.hh"
 #include "sst/sst_responder_interface.hh"
+
+
+#include "base/addr_range_map.hh"
+#include "debug/Checkpoint.hh"
+#include "sim/serialize.hh"
 
 /**
  * -  OutgoingRequestBridge acts as a SimObject owning pointers to both a gem5
@@ -48,6 +54,7 @@
  * OutgoingRequestBridge.
  */
 
+// using namespace gem5::memory;
 namespace gem5
 {
 
@@ -69,12 +76,42 @@ class OutgoingRequestBridge: public SimObject
         AddrRangeList getAddrRanges() const;
     };
 
+    // We need a boolean variable to distinguish between INIT and RUN phases in
+    // SST. Gem5 does functional accesses to the SST memory when:
+    //  (a) It loads the kernel (at the start of the simulation
+    //  (b) During VIO/disk accesses.
+    // While loading the kernel, it is easy to handle all functional accesses
+    // as SST allows initializing of untimed data during its INIT phase.
+    // However, functional accesses done to the SST memory during RUN phase has
+    // to handled separately. In this implementation, we convert all such
+    // functional accesses to timing accesses so that it is correctly read from
+    // the memory.
+    bool init_phase_bool;
+
+  public:
+    // we need a statistics counter for this simobject to find out how many
+    // requests were sent to or received from the outgoing port.
+    struct StatGroup : public statistics::Group
+    {
+        StatGroup(statistics::Group *parent);
+        /** Count the number of outgoing packets */
+        statistics::Scalar numOutgoingPackets;
+
+
+        /** Cumulative size of the all outgoing packets */
+        statistics::Scalar sizeOutgoingPackets;
+
+        /** Count the number of incoming packets */
+        statistics::Scalar numIncomingPackets;
+        /** Cumulative size of all the incoming packets */
+        statistics::Scalar sizeIncomingPackets;
+    } stats;
   public:
     // a gem5 ResponsePort
     OutgoingRequestPort outgoingPort;
     // pointer to the corresponding SST responder
     SSTResponderInterface* sstResponder;
-    // this vector holds the initialization data sent by gem5
+    // this vector holds the initialization data sent by gem5. this cariable is 
     std::vector<std::pair<Addr, std::vector<uint8_t>>> initData;
 
     AddrRangeList physicalAddressRanges;
@@ -85,7 +122,8 @@ class OutgoingRequestBridge: public SimObject
 
     // Required to let the OutgoingRequestPort to send range change request.
     void init();
-
+    
+    bool handleTiming(PacketPtr pkt);
     // Returns the range of addresses that the ports will handle.
     // Currently, it will return the range of [0x80000000, inf), which is
     // specific to RISCV (SiFive's HiFive boards).
@@ -97,8 +135,18 @@ class OutgoingRequestBridge: public SimObject
     // Returns the buffered data for initialization. This is necessary as
     // when gem5 sends functional requests to memory for initialization,
     // the connection in SST Memory Hierarchy has not been constructed yet.
+    // This buffer is only used during the INIT phase.
     std::vector<std::pair<Addr, std::vector<uint8_t>>> getInitData() const;
 
+    // We need Set/Get functions to set the init_phase_bool.
+    // `initPhaseComplete` is used to signal the outgoing bridge that INIT
+    // phase is completed and RUN phase will start.
+    void initPhaseComplete(bool value);
+
+    // We read the value of the init_phase_bool using `getInitPhaseStatus`
+    // method.
+
+    bool getInitPhaseStatus();
     // gem5 Component (from SST) will call this function to let set the
     // bridge's corresponding SSTResponderSubComponent (which implemented
     // SSTResponderInterface). I.e., this will connect this bridge to the
@@ -115,6 +163,10 @@ class OutgoingRequestBridge: public SimObject
     // to SST. Should only be called during the SST construction phase, i.e.
     // not at the simulation time.
     void handleRecvFunctional(PacketPtr pkt);
+
+    void unserialize(CheckpointIn &cp); // override;
+    void unserializeStore(CheckpointIn &cp); // override;
+
 };
 
 }; // namespace gem5

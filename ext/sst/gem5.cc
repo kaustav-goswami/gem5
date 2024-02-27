@@ -182,7 +182,6 @@ gem5Component::gem5Component(SST::ComponentId_t id, SST::Params& params):
     // Split the port names using the util method defined.
     splitPortNames(ports);
     for (int i = 0 ; i < sstPortCount ; i++) {
-        std::cout << sstPortNames[i] << std::endl;
         sstPorts.push_back(
             loadUserSubComponent<SSTResponderSubComponent>(sstPortNames[i], 0)
         );
@@ -191,6 +190,7 @@ gem5Component::gem5Component(SST::ComponentId_t id, SST::Params& params):
         sstPorts[i]->setTimeConverter(timeConverter);
         sstPorts[i]->setOutputStream(&(output));
     }
+    flag = false;
 }
 
 gem5Component::~gem5Component()
@@ -261,7 +261,7 @@ bool
 gem5Component::clockTick(SST::Cycle_t currentCycle)
 {
     // what to do in a SST's cycle
-    gem5::GlobalSimLoopExitEvent *event = simulateGem5(currentCycle);
+    gem5::GlobalSimLoopExitEvent *event = simulateGem5(currentCycle); // + base_time - 1);
     clocksProcessed++;
     // gem5 exits due to reasons other than reaching simulation limit
     if (event != gem5::simulate_limit_event) {
@@ -276,9 +276,10 @@ gem5Component::clockTick(SST::Cycle_t currentCycle)
         execPythonCommands(output_stats_commands);
 
         primaryComponentOKToEndSim();
-        return true;
+        return false;
     }
 
+    // currentCycle++; // = currentCycle + base_time;
     // returning False means the simulation should go on
     return false;
 
@@ -292,15 +293,21 @@ gem5Component::simulateGem5(uint64_t current_cycle)
     // This function should be similar to simulate() of src/sim/simulate.cc
     // with synchronization barriers removed.
 
-    inform_once("Entering event queue @ %d.  Starting simulation...\n",
-                gem5::curTick());
+    inform_once("Entering event queue @ %d _ %d.  Starting simulation...\n",
+                gem5::curTick(), current_cycle);
 
     // Tick conversion
     // The main logic for synchronize SST Tick and gem5 Tick is here.
     // next_end_tick = current_cycle * timeConverter->getFactor()
-    uint64_t next_end_tick = \
-        timeConverter->convertToCoreTime(current_cycle);
+    std::cout << " __ " << gem5::curTick() << " " << current_cycle << std::endl;
+    if (flag == false) {
+        base_time = gem5::curTick();
+        flag = true;
 
+    }
+    uint64_t next_end_tick = \
+        timeConverter->convertToCoreTime(current_cycle) + base_time;
+    // std::cout << next_end_tick << std::endl;
     // Here, if the next event in gem5's queue is not executed within the next
     // cycle, there's no need to enter the gem5's sim loop.
     if (gem5::mainEventQueue[0]->empty() ||
