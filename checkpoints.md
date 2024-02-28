@@ -11,7 +11,11 @@ It is inherited from SimObject.
 
 ```sh
 git clone git@github.com:kaustav-goswami/gem5.git
-# checkout `kg/sst-checkpoints` branch
+cd gem5
+git checkout kg/sst-checkpoints
+
+# build libgem5
+# build sst
 ```
 
 ## Approach
@@ -33,10 +37,18 @@ build/ALL/gem5.opt disaggregated_memory/configs/checkpoints/arm-gem5-take-ckpt.p
 
 1. First we need to modify the `m5.cpt` file.
     Do not restore the final `physmem` so modify the following line from `nbr_of_stores=9` to `nbr_of_stores=8`
-2. 
+2. You'd need to modify the SimObjects which does not exist in the restore system, if any.
+3. The final `physmem` file is manually traversed and loaded into the memory right now.
+4. Look at `unserialize()` method on how the restoring part is implemented.
+5. We are using the `initData` object to push the data into SST's backend memory.
 
+```sh
+# in the ext/sst directory
+bin/sst  --add-lib-path=./ sst/example_arm_dm_board_ckpt.py
+# the restore script is here
+# disaggregated_memory/configs/checkpoints/arm-gem5-restore-ckpt.py
+```
 
 ## TODO Items in the short time
 
-1. Make the `OutgoingRequestBridge` inherit from `AbstractMemory` instead of `SimObject`.
-2. Make 
+1. RemoteExternalMemory should inherit from `AbstractMemorySystem`.
