@@ -48,14 +48,17 @@
 #include "arch/x86/regs/msr.hh"
 #include "arch/x86/x86_traits.hh"
 #include "base/trace.hh"
+#include "cpu/base.hh"
 #include "cpu/thread_context.hh"
 #include "debug/TLB.hh"
 #include "mem/packet_access.hh"
 #include "mem/page_table.hh"
 #include "mem/request.hh"
+#include "sim/core.hh"
 #include "sim/full_system.hh"
 #include "sim/process.hh"
 #include "sim/pseudo_inst.hh"
+#include "sim/system.hh"
 
 namespace gem5
 {
@@ -519,6 +522,12 @@ TLB::translate(const RequestPtr &req,
         req->setPaddr(vaddr);
     }
 
+    // Intel SGX: enforce the PRM/EPC boundary and the EPCM spatial checks on
+    // the resolved physical address before the access is allowed to proceed.
+    Fault sgxFault = sgxAccessCheck(req, tc, mode, vaddr, req->getPaddr());
+    if (sgxFault != NoFault)
+        return sgxFault;
+
     return finalizePhysical(req, tc, mode);
 }
 
@@ -608,8 +617,87 @@ TLB::TlbStats::TlbStats(statistics::Group *parent)
       ADD_STAT(wrMisses, statistics::units::Count::get(),
                "TLB misses on write requests"),
       ADD_STAT(exMisses, statistics::units::Count::get(),
-               "TLB misses on execute (instr) requests")
+               "TLB misses on execute (instr) requests"),
+      ADD_STAT(sgxPrmViolations, statistics::units::Count::get(),
+               "SGX: accesses to the PRM/EPC range from outside enclave mode"),
+      ADD_STAT(sgxEpcmMisses, statistics::units::Count::get(),
+               "SGX: EPCM metadata cache misses (cold EPC page references)"),
+      ADD_STAT(sgxEpcmAliasFaults, statistics::units::Count::get(),
+               "SGX: EPCM virtual-address remapping/aliasing faults")
 {
+}
+
+Fault
+TLB::sgxAccessCheck(const RequestPtr &req, ThreadContext *tc,
+                    BaseMMU::Mode mode, Addr vaddr, Addr paddr)
+{
+    System *sys = tc->getSystemPtr();
+    // Fast path: SGX disabled or the access does not touch the PRM/EPC range.
+    if (!sys || !sys->isPrmAddr(paddr))
+        return NoFault;
+
+    const bool in_enclave = tc->readMiscRegNoEffect(misc_reg::InEnclave);
+
+    // PRM/EPC boundary enforcement: any access to secure memory from outside
+    // hardware enclave mode (host OS, another process, a DMA-style probe) is
+    // dropped with a page fault, exactly as real SGX hardware does.
+    if (!in_enclave) {
+        DPRINTF(TLB, "SGX: blocking non-enclave %s access to EPC paddr %#x "
+                "(vaddr %#x).\n",
+                mode == BaseMMU::Execute ? "execute" :
+                (mode == BaseMMU::Write ? "write" : "read"), paddr, vaddr);
+        stats.sgxPrmViolations++;
+        return std::make_shared<PageFault>(vaddr, false, mode,
+                                           /* user */ true, /* reserved */ false);
+    }
+
+    const Addr epc_page = paddr >> X86ISA::PageShift;
+    const Addr aligned_vaddr = vaddr & ~mask(X86ISA::PageShift);
+    const uint64_t eid = tc->readMiscRegNoEffect(misc_reg::ActiveEid);
+
+    auto it = epcm_table.find(epc_page);
+    if (it == epcm_table.end() || !it->second.is_valid) {
+        // Cold EPCM reference: hardware fetches the metadata from the EPCM
+        // backing store. Model the resulting ~65 ns DRAM access as a pipeline
+        // stall and bind the page to the faulting enclave/VA on first touch.
+        stats.sgxEpcmMisses++;
+        BaseCPU *cpu = tc->getCpuPtr();
+        if (cpu) {
+            Cycles miss_penalty(cpu->ticksToCycles(sim_clock::as_int::ns * 65));
+            cpu->stallPipeline(miss_penalty);
+        }
+
+        EpcmEntry &entry = epcm_table[epc_page];
+        entry.expected_virtual_address = aligned_vaddr;
+        entry.enclave_owner_id = eid;
+        entry.is_valid = true;
+        entry.readable = true;
+        entry.writeable = true;
+        DPRINTF(TLB, "SGX: EPCM miss for EPC page %#x, binding to enclave %d "
+                "at vaddr %#x.\n", epc_page, eid, aligned_vaddr);
+        return NoFault;
+    }
+
+    // Hit: enforce that the virtual address matches the one bound to the page.
+    // A mismatch means the (untrusted) page tables remapped an EPC page to a
+    // different VA -- an aliasing/remapping attack -- so we fault.
+    if (it->second.expected_virtual_address != aligned_vaddr ||
+        it->second.enclave_owner_id != eid) {
+        DPRINTF(TLB, "SGX: EPCM alias fault on EPC page %#x: vaddr %#x "
+                "(expected %#x), enclave %d (owner %d).\n", epc_page,
+                aligned_vaddr, it->second.expected_virtual_address, eid,
+                it->second.enclave_owner_id);
+        stats.sgxEpcmAliasFaults++;
+        return std::make_shared<PageFault>(vaddr, true, mode,
+                                           /* user */ true, /* reserved */ true);
+    }
+
+    if (mode == BaseMMU::Write && !it->second.writeable) {
+        return std::make_shared<PageFault>(vaddr, true, BaseMMU::Write,
+                                           /* user */ true, /* reserved */ false);
+    }
+
+    return NoFault;
 }
 
 void

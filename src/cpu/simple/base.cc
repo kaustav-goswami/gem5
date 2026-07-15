@@ -310,6 +310,11 @@ BaseSimpleCPU::checkForInterrupts()
                 return;
             }
 
+            // Intel SGX: if the core is executing inside an enclave, take an
+            // Asynchronous Enclave Exit (scrub state + stall) before the
+            // interrupt is delivered to the host.
+            tc->getIsaPtr()->handleEnclaveAsyncExit(tc);
+
             t_info.fetchOffset = 0;
             interrupts[curThread]->updateIntrInfo();
             interrupt->invoke(tc);

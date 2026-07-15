@@ -90,6 +90,27 @@ class BaseISA : public SimObject
 
     virtual void resetThread() { panic("Thread reset not implemented."); }
 
+    /**
+     * Intel SGX hook: invoked by the CPU just before an interrupt or
+     * exception is delivered. If the thread is currently executing inside an
+     * enclave, the ISA performs an Asynchronous Enclave Exit (AEX): it leaves
+     * enclave mode, scrubs architectural registers to avoid leaking secret
+     * state, accounts the microarchitectural cost, and optionally redirects
+     * execution to the AEX trampoline. Returns true if an AEX was performed.
+     * The default implementation is a no-op for ISAs without SGX modeling.
+     */
+    virtual bool handleEnclaveAsyncExit(ThreadContext *tc) { return false; }
+
+    /**
+     * Intel SGX lifecycle hooks driven by the m5_sgx_enter/m5_sgx_exit
+     * pseudo-instructions. enclaveEnter transitions the calling thread into
+     * enclave mode for the given enclave id; enclaveExit performs a graceful
+     * EEXIT. The default implementations are no-ops for ISAs without SGX
+     * modeling.
+     */
+    virtual void enclaveEnter(ThreadContext *tc, uint64_t enclave_id) {}
+    virtual void enclaveExit(ThreadContext *tc) {}
+
     const RegClasses &regClasses() const { return _regClasses; }
     const std::string &getIsaName() const { return isaName; }
 

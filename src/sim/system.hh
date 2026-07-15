@@ -565,6 +565,17 @@ class System : public SimObject, public PCEventScope
      */
     const AddrRange _m5opRange;
 
+  protected:
+    /**
+     * Intel SGX: physical Processor Reserved Memory (PRM) range that backs
+     * the Enclave Page Cache (EPC), and the guest PC used on an Asynchronous
+     * Enclave Exit (AEX). The range is empty (start == end) when SGX
+     * enforcement is disabled.
+     */
+    const Addr _prmStart;
+    const Addr _prmEnd;
+    const Addr _aexTrampolineVector;
+
   public:
     PARAMS(System);
 
@@ -576,6 +587,26 @@ class System : public SimObject, public PCEventScope
      * an invalid/empty range if disabled.
      */
     const AddrRange &m5opRange() const { return _m5opRange; }
+
+    /** @{ */
+    /** Intel SGX PRM/EPC range accessors. */
+    Addr prmStart() const { return _prmStart; }
+    Addr prmEnd() const { return _prmEnd; }
+    Addr aexTrampolineVector() const { return _aexTrampolineVector; }
+
+    /** Whether SGX PRM/EPC enforcement is enabled for this system. */
+    bool sgxEnabled() const { return _prmEnd > _prmStart; }
+
+    /**
+     * Check whether a physical address falls inside the Processor Reserved
+     * Memory (PRM) range, i.e. it targets the Enclave Page Cache.
+     */
+    bool
+    isPrmAddr(Addr paddr) const
+    {
+        return sgxEnabled() && paddr >= _prmStart && paddr < _prmEnd;
+    }
+    /** @} */
 
   public:
 

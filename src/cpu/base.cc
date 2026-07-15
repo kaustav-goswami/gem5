@@ -438,13 +438,26 @@ BaseCPUStats::BaseCPUStats(statistics::Group *parent)
       ADD_STAT(numWorkItemsStarted, statistics::units::Count::get(),
                "Number of work items this cpu started"),
       ADD_STAT(numWorkItemsCompleted, statistics::units::Count::get(),
-               "Number of work items this cpu completed")
+               "Number of work items this cpu completed"),
+      ADD_STAT(sgxStallCycles, statistics::units::Cycle::get(),
+               "SGX: cycles stalled for enclave transitions and EPCM misses"),
+      ADD_STAT(sgxStallEvents, statistics::units::Count::get(),
+               "SGX: number of modeled enclave stall events")
 {
     cpi.precision(6);
     cpi = numCycles / numInsts;
 
     ipc.precision(6);
     ipc = numInsts / numCycles;
+}
+
+void
+BaseCPU::stallPipeline(Cycles cycles)
+{
+    baseStats.sgxStallEvents++;
+    baseStats.sgxStallCycles += cycles;
+    DPRINTF(Thread, "SGX: modeling a %llu-cycle pipeline stall.\n",
+            (uint64_t)cycles);
 }
 
 void

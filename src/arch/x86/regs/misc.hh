@@ -408,6 +408,13 @@ enum : RegIndex
     XcrBase,
     Xcr0 = XcrBase,
 
+    // Intel SGX enclave tracking state, modeled as architectural MISCREGs so
+    // that it is reachable from any ThreadContext (MMU/TLB/CPU). InEnclave is
+    // non-zero while the core executes in hardware-enforced "enclave mode";
+    // ActiveEid holds the id of the currently executing enclave.
+    InEnclave,
+    ActiveEid,
+
     NumRegs
 };
 

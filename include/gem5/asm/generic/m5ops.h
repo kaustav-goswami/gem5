@@ -82,6 +82,10 @@
 
 #define M5OP_HYPERCALL          0x71
 
+// Intel SGX enclave lifecycle pseudo-ops.
+#define M5OP_SGX_ENTER          0x72
+#define M5OP_SGX_EXIT           0x73
+
 #define M5OP_FOREACH                                            \
     M5OP(m5_arm, M5OP_ARM)                                      \
     M5OP(m5_quiesce, M5OP_QUIESCE)                              \
@@ -110,6 +114,8 @@
     M5OP(m5_dist_toggle_sync, M5OP_DIST_TOGGLE_SYNC)            \
     M5OP(m5_workload, M5OP_WORKLOAD)                            \
     M5OP(m5_hypercall, M5OP_HYPERCALL)                          \
+    M5OP(m5_sgx_enter, M5OP_SGX_ENTER)                          \
+    M5OP(m5_sgx_exit, M5OP_SGX_EXIT)                            \
 
 #define M5OP_MERGE_TOKENS_I(a, b) a##b
 #define M5OP_MERGE_TOKENS(a, b) M5OP_MERGE_TOKENS_I(a, b)

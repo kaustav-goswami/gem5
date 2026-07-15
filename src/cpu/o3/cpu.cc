@@ -700,6 +700,12 @@ CPU::processInterrupts(const Fault &interrupt)
     // @todo: Allow other threads to handle interrupts.
 
     assert(interrupt != NoFault);
+
+    // Intel SGX: if thread 0 is executing inside an enclave, take an
+    // Asynchronous Enclave Exit (scrub state + stall) before delivering the
+    // interrupt to the host.
+    threadContexts[0]->getIsaPtr()->handleEnclaveAsyncExit(threadContexts[0]);
+
     interrupts[0]->updateIntrInfo();
 
     DPRINTF(O3CPU, "Interrupt %s being handled\n", interrupt->name());

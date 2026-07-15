@@ -88,6 +88,10 @@ class ISA : public BaseISA
 
     void copyRegsFrom(ThreadContext *src) override;
 
+    bool handleEnclaveAsyncExit(ThreadContext *tc) override;
+    void enclaveEnter(ThreadContext *tc, uint64_t enclave_id) override;
+    void enclaveExit(ThreadContext *tc) override;
+
     void serialize(CheckpointOut &cp) const override;
     void unserialize(CheckpointIn &cp) override;
 

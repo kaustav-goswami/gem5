@@ -41,6 +41,7 @@
 #include "debug/X86.hh"
 #include "params/X86ISA.hh"
 #include "sim/serialize.hh"
+#include "sim/system.hh"
 
 namespace gem5
 {
@@ -217,6 +218,77 @@ ISA::copyRegsFrom(ThreadContext *src)
         tc->setReg(id, src->getReg(id));
     copyMiscRegs(src, tc);
     tc->pcState(src->pcState());
+}
+
+bool
+ISA::handleEnclaveAsyncExit(ThreadContext *tc)
+{
+    if (!readMiscRegNoEffect(misc_reg::InEnclave))
+        return false;
+
+    DPRINTF(X86, "SGX: Asynchronous Enclave Exit from enclave %llu.\n",
+            readMiscRegNoEffect(misc_reg::ActiveEid));
+
+    // Leave enclave mode before the interrupt is delivered to the host.
+    setMiscRegNoEffect(misc_reg::InEnclave, 0);
+
+    // Scrub architectural register state so enclave secrets cannot leak to
+    // the host OS through the interrupted context. Real hardware loads
+    // synthetic values into the GPRs and clears the arithmetic flags; we
+    // approximate that by zeroing the data registers and condition codes. The
+    // stack and frame pointers (RSP/RBP) are deliberately left intact: SGX
+    // restores them to their host values on exit, and clobbering them would
+    // break resumption of the interrupted host context.
+    for (int i = 0; i < int_reg::NumArchRegs; i++) {
+        if (i == int_reg::_RspIdx || i == int_reg::_RbpIdx)
+            continue;
+        tc->setReg(flatIntRegClass[i], (RegVal)0);
+    }
+    for (auto &id : ccRegClass)
+        tc->setReg(id, (RegVal)0);
+
+    // Model the microcode cost of the pipeline flush plus register scrub.
+    BaseCPU *cpu = tc->getCpuPtr();
+    if (cpu)
+        cpu->stallPipeline(Cycles(250));
+
+    // Redirect to the configured AEX trampoline handler, if any.
+    System *sys = tc->getSystemPtr();
+    if (sys && sys->aexTrampolineVector())
+        tc->pcState(sys->aexTrampolineVector());
+
+    return true;
+}
+
+void
+ISA::enclaveEnter(ThreadContext *tc, uint64_t enclave_id)
+{
+    DPRINTF(X86, "SGX: EENTER into enclave %llu.\n", enclave_id);
+    setMiscRegNoEffect(misc_reg::InEnclave, 1);
+    setMiscRegNoEffect(misc_reg::ActiveEid, enclave_id);
+
+    // Entering an enclave is a serializing event: flush the local TLBs so
+    // that stale, non-enclave translations cannot be reused inside the
+    // enclave (and to model the context-switch cost).
+    BaseMMU *mmu = tc->getMMUPtr();
+    if (mmu)
+        mmu->flushAll();
+}
+
+void
+ISA::enclaveExit(ThreadContext *tc)
+{
+    if (!readMiscRegNoEffect(misc_reg::InEnclave))
+        return;
+
+    DPRINTF(X86, "SGX: EEXIT from enclave %llu.\n",
+            readMiscRegNoEffect(misc_reg::ActiveEid));
+    setMiscRegNoEffect(misc_reg::InEnclave, 0);
+
+    // Model the cost of the graceful-exit register scrub.
+    BaseCPU *cpu = tc->getCpuPtr();
+    if (cpu)
+        cpu->stallPipeline(Cycles(120));
 }
 
 RegVal

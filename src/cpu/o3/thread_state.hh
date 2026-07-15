@@ -91,6 +91,13 @@ class ThreadState : public gem5::ThreadState
     /** Pointer to the hardware transactional memory checkpoint. */
     std::unique_ptr<BaseHTMCheckpoint> htmCheckpoint;
 
+    // Intel SGX: mirror of the architectural enclave-mode state for this
+    // hardware thread. The authoritative copy lives in the InEnclave/ActiveEid
+    // MISCREGs; these fields make the state easy to inspect when debugging the
+    // O3 pipeline.
+    bool in_enclave_mode = false;
+    uint64_t active_enclave_id = 0;
+
     ThreadState(CPU *_cpu, int _thread_num, Process *_process);
 
     void serialize(CheckpointOut &cp) const override;

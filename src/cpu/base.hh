@@ -702,12 +702,27 @@ class BaseCPU : public ClockedObject
         statistics::Formula ipc;
         statistics::Scalar numWorkItemsStarted;
         statistics::Scalar numWorkItemsCompleted;
+
+        // Intel SGX modeling: cumulative microarchitectural overhead injected
+        // by enclave transitions (AEX, graceful EEXIT) and EPCM cache misses.
+        statistics::Scalar sgxStallCycles;
+        statistics::Scalar sgxStallEvents;
     } baseStats;
 
   private:
     std::vector<AddressMonitor> addressMonitor;
 
   public:
+    /**
+     * Intel SGX: account a modeled pipeline stall of the given number of
+     * cycles. This captures the architectural cost of enclave transitions
+     * (register scrubbing + pipeline flush on AEX/EEXIT) and EPCM metadata
+     * misses. The penalty is recorded in the baseStats counters so that it
+     * shows up in the simulated cycle overhead for an evaluation; CPU models
+     * that want a literal timing bubble can also observe these counters.
+     */
+    void stallPipeline(Cycles cycles);
+
     void armMonitor(ThreadID tid, Addr address);
     bool mwait(ThreadID tid, PacketPtr pkt);
     void mwaitAtomic(ThreadID tid, ThreadContext *tc, BaseMMU *mmu);

@@ -164,3 +164,16 @@ class System(SimObject):
         "Base of the 64KiB PA range used for "
         "memory-mapped m5ops. Set to 0 to disable.",
     )
+
+    # Intel SGX modeling parameters. The Processor Reserved Memory (PRM) range
+    # encloses the Enclave Page Cache (EPC). Physical accesses to this range
+    # are only permitted while the core executes in enclave mode; everything
+    # else (host OS, other enclaves) faults. Set prm_start == prm_end (the
+    # default) to disable SGX enforcement entirely.
+    prm_start = Param.Addr(0, "Start of the Processor Reserved Memory range")
+    prm_end = Param.Addr(0, "End (exclusive) of the Processor Reserved Memory range")
+    aex_trampoline_vector = Param.Addr(
+        0,
+        "Guest PC the core jumps to on an Asynchronous Enclave Exit (AEX). "
+        "Set to 0 to leave the PC untouched on AEX.",
+    )

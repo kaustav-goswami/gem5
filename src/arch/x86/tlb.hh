@@ -39,6 +39,7 @@
 #define __ARCH_X86_TLB_HH__
 
 #include <list>
+#include <unordered_map>
 #include <vector>
 
 #include "arch/generic/tlb.hh"
@@ -56,6 +57,24 @@ class ThreadContext;
 namespace X86ISA
 {
     class Walker;
+
+    /**
+     * Intel SGX: an Enclave Page Cache Map (EPCM) entry. Real hardware keeps
+     * one of these per 4 KiB EPC page in an on-die structure used to enforce
+     * spatial permissions and detect host/hypervisor page remapping (aliasing)
+     * attacks. We model the metadata and the access checks, but not the
+     * cryptographic state.
+     */
+    struct EpcmEntry
+    {
+        /** Virtual address this EPC page is bound to (page-aligned). */
+        Addr expected_virtual_address = 0;
+        /** Enclave that owns this page. */
+        uint64_t enclave_owner_id = 0;
+        bool is_valid = false;
+        bool readable = false;
+        bool writeable = false;
+    };
 
     class TLB : public BaseTLB
     {
@@ -81,6 +100,14 @@ namespace X86ISA
         {
           return (vpn | pcid);
         }
+
+        /**
+         * Intel SGX: the modeled Enclave Page Cache Map. Keyed by EPC physical
+         * page number (paddr >> 12). Lazily populated on the first enclave
+         * access to a page, mirroring how real hardware loads EPCM metadata
+         * from its backing store on a cold reference.
+         */
+        std::unordered_map<Addr, EpcmEntry> epcm_table;
 
       protected:
 
@@ -119,9 +146,26 @@ namespace X86ISA
             statistics::Scalar rdMisses;
             statistics::Scalar wrMisses;
             statistics::Scalar exMisses;
+
+            // Intel SGX modeling stats.
+            statistics::Scalar sgxPrmViolations;
+            statistics::Scalar sgxEpcmMisses;
+            statistics::Scalar sgxEpcmAliasFaults;
         } stats;
 
         Fault translateInt(bool read, RequestPtr req, ThreadContext *tc);
+
+        /**
+         * Intel SGX access check performed once a translation has produced a
+         * physical address. Enforces the PRM/EPC boundary (only enclave-mode
+         * accesses may touch the EPC), models the EPCM cache-miss penalty on
+         * the first enclave reference to a page, and detects virtual-address
+         * remapping/aliasing against the EPCM entry.
+         *
+         * @return a fault if the access is illegal, NoFault otherwise.
+         */
+        Fault sgxAccessCheck(const RequestPtr &req, ThreadContext *tc,
+                             BaseMMU::Mode mode, Addr vaddr, Addr paddr);
 
         Fault translate(const RequestPtr &req, ThreadContext *tc,
                 BaseMMU::Translation *translation, BaseMMU::Mode mode,

@@ -70,6 +70,13 @@ class SimpleExecContext : public ExecContext
     // Branch prediction
     std::unique_ptr<PCStateBase> predPC;
 
+    // Intel SGX: mirror of the architectural enclave-mode state for this
+    // hardware thread. The authoritative copy lives in the InEnclave/ActiveEid
+    // MISCREGs; these fields make the state easy to inspect when debugging the
+    // simple CPU pipeline.
+    bool in_enclave_mode = false;
+    uint64_t active_enclave_id = 0;
+
     /** PER-THREAD STATS */
     Counter numInst;
     Counter numOp;

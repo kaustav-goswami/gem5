@@ -67,6 +67,14 @@ void m5_panic(void);
 void m5_work_begin(uint64_t workid, uint64_t threadid);
 void m5_work_end(uint64_t workid, uint64_t threadid);
 void m5_hypercall(uint64_t hypercall_id);
+
+/*
+ * Intel SGX enclave lifecycle pseudo-ops. m5_sgx_enter transitions the
+ * calling hardware thread into enclave mode for the given enclave id;
+ * m5_sgx_exit performs a graceful exit back to non-enclave execution.
+ */
+void m5_sgx_enter(uint64_t enclave_id);
+void m5_sgx_exit(void);
 /*
  * Send a very generic poke to the workload so it can do something. It's up to
  * the workload to know what information to look for to interpret an event,

@@ -183,6 +183,9 @@ System::System(const Params &p)
       _m5opRange(p.m5ops_base ?
                  RangeSize(p.m5ops_base, 0x10000) :
                  AddrRange(1, 0)), // Create an empty range if disabled
+      _prmStart(p.prm_start),
+      _prmEnd(p.prm_end),
+      _aexTrampolineVector(p.aex_trampoline_vector),
       redirectPaths(p.redirect_paths)
 {
     panic_if(!workload, "No workload set for system %s "

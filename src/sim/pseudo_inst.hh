@@ -114,6 +114,8 @@ void m5Syscall(ThreadContext *tc);
 void togglesync(ThreadContext *tc);
 void triggerWorkloadEvent(ThreadContext *tc);
 void m5Hypercall(ThreadContext *tc, uint64_t hypercall_id);
+void m5SgxEnter(ThreadContext *tc, uint64_t enclave_id);
+void m5SgxExit(ThreadContext *tc);
 
 /**
  * Execute a decoded M5 pseudo instruction
@@ -252,6 +254,14 @@ pseudoInstWork(ThreadContext *tc, uint8_t func, uint64_t &result)
 
       case M5OP_HYPERCALL:
         invokeSimcall<ABI>(tc, m5Hypercall);
+        return true;
+
+      case M5OP_SGX_ENTER:
+        invokeSimcall<ABI>(tc, m5SgxEnter);
+        return true;
+
+      case M5OP_SGX_EXIT:
+        invokeSimcall<ABI>(tc, m5SgxExit);
         return true;
       default:
         warn("Unhandled m5 op: %#x\n", func);

@@ -616,5 +616,21 @@ m5Hypercall(ThreadContext *tc, uint64_t hypercall_id)
     curTick(),0, std::map<std::string, std::string>(), hypercall_id, true);
 }
 
+void
+m5SgxEnter(ThreadContext *tc, uint64_t enclave_id)
+{
+    DPRINTF(PseudoInst, "pseudo_inst::m5SgxEnter(%llu)\n", enclave_id);
+    // Delegate to the ISA so the (ISA-specific) enclave-mode state, TLB
+    // flushing, and timing model stay out of this ISA-agnostic interface.
+    tc->getIsaPtr()->enclaveEnter(tc, enclave_id);
+}
+
+void
+m5SgxExit(ThreadContext *tc)
+{
+    DPRINTF(PseudoInst, "pseudo_inst::m5SgxExit()\n");
+    tc->getIsaPtr()->enclaveExit(tc);
+}
+
 } // namespace pseudo_inst
 } // namespace gem5
